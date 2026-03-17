@@ -70,9 +70,6 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
     //Read next header
     read_and_parse_header(connection_fd, &now_header);
 
-    printf("\n");
-    print_header(now_header);
-    printf("\n");
     switch (now_header.type)
     {
       case MSG_DATA:
