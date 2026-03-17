@@ -8,7 +8,7 @@
   - Cliente: ip, porta (opcional) caminho pro arquivo
 
 ## Qualidade de código
-- [ ] Refatorar write_new_file (recursão → loop)
+- [x] Refatorar write_new_file (recursão → loop)
 - [ ] Padronização de nomenclatura
 - [ ] Código Python em POO
 
