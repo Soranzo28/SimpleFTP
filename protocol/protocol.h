@@ -14,6 +14,7 @@
   X(0x05, "MSG_ERROR")
 
 #define CHUNK_SIZE 8192 // 8KB
+#define MAX_RESEND_TRIES 3
 
 #define MSG_SEND 0x01
 #define MSG_ACK 0x02

@@ -65,12 +65,12 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
 {
   Header ack_header = create_ack_header(header.filename);
   Header now_header = {0};
-  do 
-  {
-    //Read next header
+  int resend_tries = 0, chunks_written = 0;
+  do {
+    // Read next header
     read_and_parse_header(connection_fd, &now_header);
 
-    switch (now_header.type)
+    switch (now_header.type) 
     {
       case MSG_DATA:
         break;
@@ -82,26 +82,36 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
     }
 
     uint16_t bytes_to_be_handled = now_header.payload_size;
-    if (bytes_to_be_handled > CHUNK_SIZE) return 1;
+    if (bytes_to_be_handled > CHUNK_SIZE)
+      return 1;
 
-    //Since the header has been read, now we read data
+    // Since the header has been read, now we read data
     uint8_t buffer[CHUNK_SIZE] = {0};
     uint16_t bytes_read = read(connection_fd, buffer, bytes_to_be_handled);
 
     // CRC32 calculation and verify
     uLong crc = crc32(0L, Z_NULL, 0);
     crc = crc32(crc, (const Bytef *)buffer, bytes_read);
-    if (crc != now_header.checksum) return 1;
+    if (crc != now_header.checksum) {
+      if (resend_tries > MAX_RESEND_TRIES)
+        return 1;
+      resend_tries++;
+      send_error_header(connection_fd);
+      continue;
+    }
 
-    //Writes to the file
+    // Writes to the file
     uint16_t bytes_written = fwrite(buffer, sizeof(buffer[0]), bytes_read, file);
-   
-    //Sends ack 
+    resend_tries = 0;
+    chunks_written++;
+    printf("Chunk %d written!\n", chunks_written);
+
+    // Sends ack
     write(connection_fd, &ack_header, sizeof(Header));
 
     memset(&now_header, 0, sizeof(Header));
 
-  } while(1);
+  } while (1);
 }
 
 void send_error_header(sock_fd connection_fd) {
