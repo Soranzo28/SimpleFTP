@@ -1,60 +1,140 @@
 import socket
 from enum import IntEnum
 import struct
-from crc import Crc32, Calculator
+from pathlib import Path
+import zlib
+from dataclasses import dataclass
 
-s = socket.socket()
-s.connect(("localhost", 9000))
-
-CHUNK_SIZE = 8192
-
+# =BHI255s
 
 class msg_type(IntEnum):
-    MSG_SEND = 0x01
-    MSG_ACK = 0x02
-    MSG_DATA = 0x03
-    MSG_DONE = 0x04
-    MSG_ERROR = 0x05
+    MSG_SEND = 1
+    MSG_ACK = 2
+    MSG_DATA = 3
+    MSG_DONE = 4
+    MSG_ERROR = 5
 
 
-def create_send_header(filename):
-    header = struct.pack("=BHI255s", msg_type.MSG_SEND, 0, 0, filename.encode())
-    return header
+# HEADER CLASS
+FMT = "=BHI255s"
+HEADER_SIZE = struct.calcsize(FMT)
 
+@dataclass
+class Header:
+    type: int
+    payload_size: int
+    checksum: int
+    filename: bytes
 
-def create_data_packet(checksum, chunk, size):
-    header = struct.pack("=BHI255s", msg_type.MSG_DATA, size, checksum, b"")
-    packet = header + chunk
-    return packet
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        type_, payload_size, checksum, filename = struct.unpack(FMT, data)
+        return cls(type_, payload_size, checksum, filename.rstrip(b'\x00').decode())
 
+# ERROR CLASSES
+class CRCMismatchError(Exception):
+    pass
 
-def create_done_header():
-    header = struct.pack("=BHI255s", msg_type.MSG_DONE, 0, 0, b"")
-    return header
+class ConnectionError(OSError):
+    pass
 
+# MAIN CLASS
+class SimpleFTP:
+    def __init__(self, chunk_size=8192, send_retries=3):
 
-s.send(create_send_header("w_berserk.png"))
-print("Sent send header!")
+        # public properties
+        self.chunk_size = chunk_size
+        self.send_retries = send_retries
 
-f = open("/home/soranzo/Midia/Pictures/w_berserk.png", "rb")
+        # private properties
+        self.__socket = socket.socket()
 
+    def connect(self, ip, port):
 
-while True:
-    chunk = f.read(CHUNK_SIZE)
-    if not chunk:
-        break
-    calculator = Calculator(Crc32.CRC32)
-    chunk_checksum = calculator.checksum(chunk)
-    data_packet = create_data_packet(chunk_checksum, chunk, len(chunk))
-    s.send(data_packet)
-    print("Sent data packet!")
-    response = s.recv(struct.calcsize("=BHI255s"))
-    r_msg_type, payload_size, checksum, filename = struct.unpack("=BHI255s", response)
-    print(f"Ack: {r_msg_type}")
-    if r_msg_type != msg_type.MSG_ACK:
-        print("ERROR!")
-        break
+        self.__socket.connect((ip, port))
 
+    def disconnect(self):
+        if self.__socket:
+            self.__socket.close()
 
-s.send(create_done_header())
-print("Done sending file!")
+    def send_file(self, filepath):
+        p = Path(filepath)
+        print(f"Sending file {p.name}")
+        
+        send_header = self._create_send_header(p.name)
+        self.__socket.send(send_header)
+
+        for chunk in self._chunkinize_file(filepath):
+            chunk_checksum = self._calculate_chunk_checksum(chunk)
+            data_packet = self._create_data_packet(chunk, chunk_checksum)
+            self.__socket.send(data_packet)
+            header = self._recv_response()
+            if header.type == msg_type.MSG_ERROR:
+                self._resend_packet(data_packet)
+            elif header.type == msg_type.MSG_ACK:
+                continue
+            else:
+                raise ConnectionError()
+
+        done_header = self._create_done_header()
+        self.__socket.send(done_header)
+        print("File sent!")
+
+    def _create_send_header(self, filename):
+        header = struct.pack("=BHI255s", msg_type.MSG_SEND,
+                             0, 0, filename.encode())
+        return header
+
+    def _create_data_packet(self, chunk, checksum):
+        header = struct.pack("=BHI255s", msg_type.MSG_DATA,
+                             len(chunk), checksum, b"")
+        packet = header + chunk
+        return packet
+
+    def _create_done_header(self):
+        header = struct.pack("=BHI255s", msg_type.MSG_DONE, 0, 0, b"")
+        return header
+
+    def _calculate_chunk_checksum(self, chunk):
+        checksum = zlib.crc32(chunk) & 0xFFFFFFFF
+        return checksum
+
+    def _chunkinize_file(self, filepath):
+        p = Path(filepath)
+
+        if not p.exists():
+            raise FileNotFoundError(f"File not found! {filepath}")
+        if not p.is_file():
+            raise ValueError(f"Path is not a file! {filepath}")
+
+        with open(filepath, "rb") as f:
+            while True:
+                chunk = f.read(self.chunk_size)
+                if not chunk:
+                    return
+                yield chunk
+
+    def _recv_response(self):
+        raw_header = self.__socket.recv(HEADER_SIZE)
+        header = Header.from_bytes(raw_header)
+        return header
+
+    def _resend_packet(self, data_packet):
+        print("CRM error detected, trying to send packet again...")
+        for _ in range(self.send_retries):
+            self.__socket.send(data_packet)
+            header = self._recv_response()
+            if header.type == msg_type.MSG_ACK:
+                print("Message re-sended successfully!")
+                return
+        raise CRCMismatchError()
+
+def main():
+    ftp = SimpleFTP()
+    ftp.connect("localhost", 9000)
+    ftp.send_file("/home/soranzo/Midia/Pictures/w_berserk.png")
+    ftp.disconnect()
+
+if __name__ == "__main__":
+    main()
+
