@@ -65,10 +65,14 @@ class SimpleFTP:
         self.__socket.send(send_header)
 
         for chunk in self._chunkinize_file(filepath):
+
             chunk_checksum = self._calculate_chunk_checksum(chunk)
             data_packet = self._create_data_packet(chunk, chunk_checksum)
             self.__socket.send(data_packet)
+
+
             header = self._recv_response()
+
             if header.type == msg_type.MSG_ERROR:
                 self._resend_packet(data_packet)
             elif header.type == msg_type.MSG_ACK:
@@ -86,8 +90,7 @@ class SimpleFTP:
         return header
 
     def _create_data_packet(self, chunk, checksum):
-        header = struct.pack("=BHI255s", msg_type.MSG_DATA,
-                             len(chunk), checksum, b"")
+        header = struct.pack("=BHI255s", msg_type.MSG_DATA, len(chunk), checksum, b"")
         packet = header + chunk
         return packet
 
@@ -132,7 +135,7 @@ class SimpleFTP:
 def main():
     ftp = SimpleFTP()
     ftp.connect("localhost", 9000)
-    ftp.send_file("/home/soranzo/Midia/Pictures/w_berserk.png")
+    ftp.send_file("/home/soranzo/testfile")
     ftp.disconnect()
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
 {
   Header ack_header = create_ack_header(header.filename);
   Header now_header = {0};
-  int resend_tries = 0, chunks_written = 0;
+  int resend_tries = 0;
   do {
     // Read next header
     read_and_parse_header(connection_fd, &now_header);
@@ -103,8 +103,6 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
     // Writes to the file
     uint16_t bytes_written = fwrite(buffer, sizeof(buffer[0]), bytes_read, file);
     resend_tries = 0;
-    chunks_written++;
-    printf("Chunk %d written!\n", chunks_written);
 
     // Sends ack
     write(connection_fd, &ack_header, sizeof(Header));
