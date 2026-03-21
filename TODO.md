@@ -3,7 +3,7 @@
 ## Funcionalidades
 - [x] Verificação de CRC32 no servidor
 - [x] Retransmissão de pacote se CRC32 não bater
-- [ ] Argumentos na execução
+- [x] Argumentos na execução
   - Servidor: ip, porta, caminho de destino
   - Cliente: ip, porta (opcional) caminho pro arquivo
 - [ ] DEBUG MODE server-side principalmente pra printar CRC calculado / recebido, pacotes e etc
