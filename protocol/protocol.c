@@ -1,5 +1,7 @@
 #include "protocol.h"
 #include <iso646.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -50,11 +52,38 @@ Header create_error_header() {
   return header;
 }
 
-int handle_msg_send(Header header, sock_fd connection_fd, FILE **file) {
+int handle_msg_send(Header header, sock_fd connection_fd, FILE **file, char* download_path) {
   FILE *new_file;
-  new_file = fopen(header.filename, "wb");
+  
+  uint8_t add_bar_char = 0;
+  size_t download_path_size = strlen(download_path);
+  size_t filename_size = strlen(header.filename);
+  size_t filename_path_size = download_path_size + filename_size;
+
+  //The function accepts path with / or without, here we check and add 1 to the size if to hold the new '/' if needed
+  if (download_path[download_path_size-1] != '/')
+  {
+    add_bar_char = 1;
+    filename_path_size++;
+  }
+
+  // Create buffer large enough to hold the filename and the path, +1 for the null terminator \0
+  char path[filename_path_size+1];
+  if (add_bar_char) 
+  {
+    snprintf(path, sizeof(path), "%s/%s", download_path, header.filename);
+  }
+  else 
+  {
+    snprintf(path, sizeof(path), "%s%s", download_path, header.filename);
+  }
+
+  new_file = fopen(path, "wb");
   if (!new_file)
+  {
+    fprintf(stderr, "Unable to create new file at: %s\n", path);
     return 1;
+  }
   Header ack_header = create_ack_header(header.filename);
   write(connection_fd, &ack_header, sizeof(Header));
   *file = new_file;

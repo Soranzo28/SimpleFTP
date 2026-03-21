@@ -2,18 +2,21 @@
 #include <asm-generic/socket.h>
 #include <iso646.h>
 #include <stdio.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
-sock_fd get_tcp_sock_fd(unsigned int port, unsigned int ip, int reuse_addr) {
+sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr) {
   sock_fd sock = socket(AF_INET, SOCK_STREAM, 0);
 
   if (sock < 0) {
     perror("socket");
     return -1;
   }
-
+  
+  in_addr_t conversed_ip; 
+  inet_pton(AF_INET, ip, &conversed_ip);
   struct sockaddr_in addr = {
-      .sin_family = AF_INET, .sin_port = htons(port), .sin_addr.s_addr = ip};
-
+      .sin_family = AF_INET, .sin_port = htons(port), .sin_addr.s_addr = conversed_ip};
   if (reuse_addr > 0) {
     int yes = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0) {

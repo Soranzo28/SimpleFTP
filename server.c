@@ -4,12 +4,26 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
+unsigned int PORT =  9000;
 
-#define PORT 9000
+int main(int argc, char ** argv) {
 
-int main() {
-  int server_fd = get_tcp_sock_fd(PORT, INADDR_ANY, 1);
+  if (argc < 2 || argc > 3)
+  {
+    printf("Usage: %s <download_path> <port>\n", argv[0]);
+    return 1;
+  }
+
+  if (argc == 3) 
+  {
+    PORT = atoi(argv[2]);
+  } 
+
+  char* download_path = argv[1];
+
+  int server_fd = get_tcp_sock_fd(PORT, "127.0.0.1", 1);
 
   if (server_fd < 0) {
     fprintf(stderr, "Unable to create server!\n");
@@ -39,7 +53,7 @@ int main() {
       continue;
     }
 
-    if (handle_msg_send(header, new_connection_fd, &file) == 1) {
+    if (handle_msg_send(header, new_connection_fd, &file, download_path) == 1) {
       send_error_header(new_connection_fd);
       continue;
     }

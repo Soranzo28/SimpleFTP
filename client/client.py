@@ -4,6 +4,7 @@ import struct
 from pathlib import Path
 import zlib
 from dataclasses import dataclass
+import argparse
 
 # =BHI255s
 
@@ -133,9 +134,17 @@ class SimpleFTP:
         raise CRCMismatchError()
 
 def main():
+    
+    parser = argparse.ArgumentParser(description="SimpleFTP Client")
+    parser.add_argument("filepath", help="File to be sent")
+    parser.add_argument("--ip", default="localhost", help="Server's IP")
+    parser.add_argument("--port", type=int, default=9000, help="Server's PORT")
+
+    args = parser.parse_args()
+
     ftp = SimpleFTP()
-    ftp.connect("localhost", 9000)
-    ftp.send_file("/home/soranzo/testfile")
+    ftp.connect(args.ip, args.port)
+    ftp.send_file(args.filepath)
     ftp.disconnect()
 
 if __name__ == "__main__":

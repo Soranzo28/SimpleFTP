@@ -10,7 +10,7 @@
 
 ## Qualidade de código
 - [x] Refatorar write_new_file (recursão → loop)
-- [ ] Padronização de nomenclatura
+- [x] Padronização de nomenclatura
 - [x] Código Python em POO
 
 ## Documentação

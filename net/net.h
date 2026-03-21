@@ -11,6 +11,6 @@ typedef struct
   struct sockaddr_in addr;
 } New_connection_info;
 
-sock_fd get_tcp_sock_fd(unsigned int port, unsigned int ip, int reuse_addr);
+sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr);
 New_connection_info get_new_connection(sock_fd server_fd);
 #endif
