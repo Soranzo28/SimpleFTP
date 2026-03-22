@@ -6,7 +6,11 @@
 - [x] Argumentos na execução
   - Servidor: ip, porta, caminho de destino
   - Cliente: ip, porta (opcional) caminho pro arquivo
-- [ ] DEBUG MODE server-side principalmente pra printar CRC calculado / recebido, pacotes e etc
+- [x] DEBUG MODE server-side principalmente pra printar CRC calculado / recebido, pacotes e etc
+- [ ] Tratar erro de conexão no meio da transferencia
+- [ ] Multithread
+- [ ] Tratar arquivos de mesmo nome excluem o anterior
+- [ ] Checksum do arquivo inteiro no MSG_DONE
 
 ## Qualidade de código
 - [x] Refatorar write_new_file (recursão → loop)
@@ -14,6 +18,6 @@
 - [x] Código Python em POO
 
 ## Documentação
-- [ ] Documentar o protocolo
-- [ ] README com instruções de uso
+- [x] Documentar o protocolo
+- [x] README com instruções de uso
 - [ ] LOG file com informações uteis
