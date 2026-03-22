@@ -4,6 +4,11 @@
 #define HELPERS_C
 #include <arpa/inet.h>
 #include <stdint.h>
+#include "../server/server.h"
+
+
+#define DEBUG_PRINT(fmt, ...) \
+    if (args.debug) printf(fmt, ##__VA_ARGS__)
 
 struct ip_octetes {
   uint8_t first_octect;

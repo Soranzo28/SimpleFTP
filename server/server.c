@@ -11,6 +11,8 @@
 
 Args args;
 
+
+
 void get_args(int argc, char **argv) {
   args.debug = 0;
   args.ip = "0.0.0.0";
@@ -53,14 +55,18 @@ void get_args(int argc, char **argv) {
         exit(0);
     }
   }
+  DEBUG_PRINT("[get_args] Returned succesfully\n");
 }
 
 int main(int argc, char **argv) {
   get_args(argc, argv);
-
+  DEBUG_PRINT("[main] Called\n");
+  
+  DEBUG_PRINT("[main] Args:\nDebug: %d\nIp: %s\nPort(bin): %u\nSave path: %s\n", args.debug, args.ip, args.port, args.save_path);
   const unsigned int PORT = args.port;
   const char *SAVE_PATH = args.save_path;
 
+  DEBUG_PRINT("[main] Calls get_tcp_sock_fd\n");
   int server_fd = get_tcp_sock_fd(PORT, "127.0.0.1", 1);
 
   if (server_fd < 0) {
@@ -70,8 +76,11 @@ int main(int argc, char **argv) {
 
   printf("Listening at %s:%d\n", args.ip, args.port);
 
+  DEBUG_PRINT("[main] Waits for connection\n");
   while (1) {
+    DEBUG_PRINT("[main] Calls get_new_connection\n");
     New_connection_info new_connection_info = get_new_connection(server_fd);
+    DEBUG_PRINT("[main] Connection recevied\n");
     FILE *file = NULL;
     in_addr_t new_connection_raw_addr =
         new_connection_info.addr.sin_addr.s_addr;
@@ -80,23 +89,30 @@ int main(int argc, char **argv) {
     if (new_connection_fd < 0) {
       continue;
     }
-
+    
+    DEBUG_PRINT("[main] Calls print_new_connection_ip\n");
     print_new_connection_ip(new_connection_raw_addr);
 
     Header header;
+    DEBUG_PRINT("[main] Calls read_and_parse_header\n");
     read_and_parse_header(new_connection_fd, &header);
 
     if (header.type != MSG_SEND && file == NULL) {
+      DEBUG_PRINT("[main] Calls send_error_header\n");
       send_error_header(new_connection_fd);
       continue;
     }
 
+    DEBUG_PRINT("[main] Calls handle_msg_send\n");
     if (handle_msg_send(header, new_connection_fd, &file, SAVE_PATH) == 1) {
+      DEBUG_PRINT("[main] Calls send_error_header\n");
       send_error_header(new_connection_fd);
       continue;
     }
 
+    DEBUG_PRINT("[main] Calls write_new_file\n");
     if (write_new_file(header, new_connection_fd, file) == 1) {
+      DEBUG_PRINT("[main] Calls send_error_header\n");
       send_error_header(new_connection_fd);
       fclose(file);
       close(new_connection_fd);
@@ -109,6 +125,6 @@ int main(int argc, char **argv) {
   }
 
   close(server_fd);
-
+  DEBUG_PRINT("[main] Returns succesfully\n");
   return 0;
 }

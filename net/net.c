@@ -1,13 +1,17 @@
 #include "net.h"
 #include <asm-generic/socket.h>
+#include "../helpers/helpers.h"
 #include <iso646.h>
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr) {
-  sock_fd sock = socket(AF_INET, SOCK_STREAM, 0);
+extern Args args;
 
+sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr) {
+  DEBUG_PRINT("[get_tcp_sock_fd] Called\n");
+  sock_fd sock = socket(AF_INET, SOCK_STREAM, 0);
+  DEBUG_PRINT("[get_tcp_sock_fd] port: %u | ip: %s | reuse_addr: %d\n", port, ip, reuse_addr);
   if (sock < 0) {
     perror("socket");
     return -1;
@@ -33,11 +37,12 @@ sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr) {
     perror("listen");
     return -1;
   }
-
+  DEBUG_PRINT("[get_tcp_sock_fd] Returned successfully\n");
   return sock;
 }
 
 New_connection_info get_new_connection(sock_fd server_fd) {
+  DEBUG_PRINT("[get_new_connection] called with server_fd %d\n", server_fd);
   struct sockaddr_in new_connection_addr;
   New_connection_info new_connection_info = {0};
 
@@ -52,6 +57,7 @@ New_connection_info get_new_connection(sock_fd server_fd) {
 
   new_connection_info.fd = new_connection;
   new_connection_info.addr = new_connection_addr;
-
+  
+  DEBUG_PRINT("[get_new_connection] returned successfully with: new_fd %d\n", new_connection);
   return new_connection_info;
 }

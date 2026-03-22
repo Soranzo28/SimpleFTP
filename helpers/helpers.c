@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
+extern Args args;
+
 // WARNING:
 //  char** buffer MUST be at least 18 bytes long
 int ip_to_string(in_addr_t in, char *buffer, size_t buffer_len) {
   if (buffer_len < 18) {
+    DEBUG_PRINT("[ip_to_string] Error: buffer size is too small");
     memset(buffer, '!', buffer_len);
     return 1;
   }
