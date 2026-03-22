@@ -33,7 +33,8 @@ void read_and_parse_header(int sockfd, Header *header);
 void print_header(Header header);
 Header create_ack_header(char *filename);
 void send_error_header(sock_fd connection_fd);
-int handle_msg_send(Header header, sock_fd connection_fd, FILE **file, char* download_path);
+int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
+                    const char *save_path);
 int write_new_file(Header header, sock_fd connection_fd, FILE *file);
 
 #endif

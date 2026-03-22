@@ -25,6 +25,7 @@ void read_and_parse_header(int sockfd, Header *header) {
   case type: {                                                                 \
     printf("Type: %s\n", string);                                              \
   } break;
+
 void print_header(Header header) {
   switch (header.type) { MSG_TYPE }
   printf("Payload: %u\n", header.payload_size);
@@ -52,35 +53,33 @@ Header create_error_header() {
   return header;
 }
 
-int handle_msg_send(Header header, sock_fd connection_fd, FILE **file, char* download_path) {
+int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
+                    const char *save_path) {
   FILE *new_file;
-  
-  uint8_t add_bar_char = 0;
-  size_t download_path_size = strlen(download_path);
-  size_t filename_size = strlen(header.filename);
-  size_t filename_path_size = download_path_size + filename_size;
 
-  //The function accepts path with / or without, here we check and add 1 to the size if to hold the new '/' if needed
-  if (download_path[download_path_size-1] != '/')
-  {
+  uint8_t add_bar_char = 0;
+  size_t save_path_size = strlen(save_path);
+  size_t filename_size = strlen(header.filename);
+  size_t filename_path_size = save_path_size + filename_size;
+
+  // The function accepts path with / or without, here we check and add 1 to the
+  // size if to hold the new '/' if needed
+  if (save_path[save_path_size - 1] != '/') {
     add_bar_char = 1;
     filename_path_size++;
   }
 
-  // Create buffer large enough to hold the filename and the path, +1 for the null terminator \0
-  char path[filename_path_size+1];
-  if (add_bar_char) 
-  {
-    snprintf(path, sizeof(path), "%s/%s", download_path, header.filename);
-  }
-  else 
-  {
-    snprintf(path, sizeof(path), "%s%s", download_path, header.filename);
+  // Create buffer large enough to hold the filename and the path, +1 for the
+  // null terminator \0
+  char path[filename_path_size + 1];
+  if (add_bar_char) {
+    snprintf(path, sizeof(path), "%s/%s", save_path, header.filename);
+  } else {
+    snprintf(path, sizeof(path), "%s%s", save_path, header.filename);
   }
 
   new_file = fopen(path, "wb");
-  if (!new_file)
-  {
+  if (!new_file) {
     fprintf(stderr, "Unable to create new file at: %s\n", path);
     return 1;
   }
@@ -90,8 +89,7 @@ int handle_msg_send(Header header, sock_fd connection_fd, FILE **file, char* dow
   return 0;
 }
 
-int write_new_file(Header header, sock_fd connection_fd, FILE *file) 
-{
+int write_new_file(Header header, sock_fd connection_fd, FILE *file) {
   Header ack_header = create_ack_header(header.filename);
   Header now_header = {0};
   int resend_tries = 0;
@@ -99,15 +97,14 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
     // Read next header
     read_and_parse_header(connection_fd, &now_header);
 
-    switch (now_header.type) 
-    {
-      case MSG_DATA:
-        break;
-      case MSG_DONE:
-        return 0;
-        break;
-      case MSG_ERROR:
-        return 1;
+    switch (now_header.type) {
+    case MSG_DATA:
+      break;
+    case MSG_DONE:
+      return 0;
+      break;
+    case MSG_ERROR:
+      return 1;
     }
 
     uint16_t bytes_to_be_handled = now_header.payload_size;
@@ -130,7 +127,8 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file)
     }
 
     // Writes to the file
-    uint16_t bytes_written = fwrite(buffer, sizeof(buffer[0]), bytes_read, file);
+    uint16_t bytes_written =
+        fwrite(buffer, sizeof(buffer[0]), bytes_read, file);
     resend_tries = 0;
 
     // Sends ack
