@@ -11,8 +11,6 @@
 
 Args args;
 
-
-
 void get_args(int argc, char **argv) {
   args.debug = 0;
   args.ip = "0.0.0.0";
@@ -22,37 +20,35 @@ void get_args(int argc, char **argv) {
   char *help_message =
       "Usage: ./server [--debug] [--ip IP] [--port PORT] [--sp SAVE PATH]\n";
 
-  static struct option long_options[] =
-  {
+  static struct option long_options[] = {
       {"debug", no_argument, 0, 'd'},      {"ip", required_argument, 0, 'i'},
       {"port", required_argument, 0, 'p'}, {"sp", required_argument, 0, 's'},
-      {"help", no_argument, 0, 'h'},       {0, 0, 0, 0}
-  };
+      {"help", no_argument, 0, 'h'},       {0, 0, 0, 0}};
 
   int opt;
-  while ((opt = getopt_long(argc, argv, "di:p:s:h", long_options, NULL)) != -1) 
-  {
-    switch (opt)
-    {
-      case 'd':
-        args.debug = 1;
-        break;
-      case 'i':
-        args.ip = optarg;
-        if (strcmp(args.ip, "localhost") == 0) args.ip = "127.0.0.1";
-        break;
-      case 'p':
-        args.port = atoi(optarg);
-        break;
-      case 's':
-        args.save_path = optarg;
-        break;
-      case '?':
-        fprintf(stderr, "%s", help_message);
-        exit(1);
-      case 'h':
-        printf("%s", help_message);
-        exit(0);
+  while ((opt = getopt_long(argc, argv, "di:p:s:h", long_options, NULL)) !=
+         -1) {
+    switch (opt) {
+    case 'd':
+      args.debug = 1;
+      break;
+    case 'i':
+      args.ip = optarg;
+      if (strcmp(args.ip, "localhost") == 0)
+        args.ip = "127.0.0.1";
+      break;
+    case 'p':
+      args.port = atoi(optarg);
+      break;
+    case 's':
+      args.save_path = optarg;
+      break;
+    case '?':
+      fprintf(stderr, "%s", help_message);
+      exit(1);
+    case 'h':
+      printf("%s", help_message);
+      exit(0);
     }
   }
   DEBUG_PRINT("[get_args] Returned succesfully\n");
@@ -61,8 +57,9 @@ void get_args(int argc, char **argv) {
 int main(int argc, char **argv) {
   get_args(argc, argv);
   DEBUG_PRINT("[main] Called\n");
-  
-  DEBUG_PRINT("[main] Args:\nDebug: %d\nIp: %s\nPort(bin): %u\nSave path: %s\n", args.debug, args.ip, args.port, args.save_path);
+
+  DEBUG_PRINT("[main] Args:\nDebug: %d\nIp: %s\nPort(bin): %u\nSave path: %s\n",
+              args.debug, args.ip, args.port, args.save_path);
   const unsigned int PORT = args.port;
   const char *SAVE_PATH = args.save_path;
 
@@ -89,7 +86,7 @@ int main(int argc, char **argv) {
     if (new_connection_fd < 0) {
       continue;
     }
-    
+
     DEBUG_PRINT("[main] Calls print_new_connection_ip\n");
     print_new_connection_ip(new_connection_raw_addr);
 
@@ -104,14 +101,16 @@ int main(int argc, char **argv) {
     }
 
     DEBUG_PRINT("[main] Calls handle_msg_send\n");
-    if (handle_msg_send(header, new_connection_fd, &file, SAVE_PATH) == 1) {
+    char *total_path;
+    if (handle_msg_send(header, new_connection_fd, &file, SAVE_PATH,
+                        &total_path) == 1) {
       DEBUG_PRINT("[main] Calls send_error_header\n");
       send_error_header(new_connection_fd);
       continue;
     }
 
     DEBUG_PRINT("[main] Calls write_new_file\n");
-    if (write_new_file(header, new_connection_fd, file) == 1) {
+    if (write_new_file(header, new_connection_fd, file, total_path) == 1) {
       DEBUG_PRINT("[main] Calls send_error_header\n");
       send_error_header(new_connection_fd);
       fclose(file);

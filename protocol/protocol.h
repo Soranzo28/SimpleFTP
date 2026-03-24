@@ -1,5 +1,5 @@
 #ifndef PROTOCOL_H
-#define PROTOCOL_H 
+#define PROTOCOL_H
 
 #include "../net/net.h"
 #include <stdint.h>
@@ -34,7 +34,9 @@ void print_header(Header header);
 Header create_ack_header(char *filename);
 void send_error_header(sock_fd connection_fd);
 int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
-                    const char *save_path);
-int write_new_file(Header header, sock_fd connection_fd, FILE *file);
+                    const char *save_path, char **total_path);
+int write_new_file(Header header, sock_fd connection_fd, FILE *file,
+                   char *total_path);
+void check_sucessfull_file_recv(uLong, uLong, char *);
 
 #endif

@@ -1,6 +1,6 @@
 #include "protocol.h"
-#include <iso646.h>
 #include "../helpers/helpers.h"
+#include <iso646.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,11 @@ void read_and_parse_header(int sockfd, Header *header) {
   DEBUG_PRINT("[read_and_parse_header] Called\n");
   Header temp_buffer;
   size_t bytes_read = read(sockfd, &temp_buffer, sizeof(Header));
-  DEBUG_PRINT("[read_and_parse_header] Header recivied:\n[Header] Type: %u\n[Header] Payload Size: %u\n[Header] Checksum: %u\n[Header] Filename: %s\n", temp_buffer.type, temp_buffer.payload_size, temp_buffer.checksum, temp_buffer.filename);
+  DEBUG_PRINT(
+      "[read_and_parse_header] Header recivied:\n[Header] Type: %u\n[Header] "
+      "Payload Size: %u\n[Header] Checksum: %u\n[Header] Filename: %s\n",
+      temp_buffer.type, temp_buffer.payload_size, temp_buffer.checksum,
+      temp_buffer.filename);
   if (bytes_read == sizeof(Header)) {
     memcpy(header, &temp_buffer, sizeof(Header));
     return;
@@ -62,7 +66,7 @@ Header create_error_header() {
 }
 
 int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
-                    const char *save_path) {
+                    const char *save_path, char **total_path) {
   DEBUG_PRINT("[handle_msg_send] Called!\n");
   FILE *new_file;
 
@@ -70,25 +74,28 @@ int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
   size_t save_path_size = strlen(save_path);
   size_t filename_size = strlen(header.filename);
   size_t filename_path_size = save_path_size + filename_size;
-  DEBUG_PRINT("[handle_msg_send] Save path size: %lu\nFilename size: %lu\nTotal size: %lu\n", save_path_size, filename_size, filename_path_size);
+  DEBUG_PRINT("[handle_msg_send] Save path size: %lu\nFilename size: "
+              "%lu\nTotal size: %lu\n",
+              save_path_size, filename_size, filename_path_size);
   // The function accepts path with / or without, here we check and add 1 to the
   // size if to hold the new '/' if needed
   if (save_path[save_path_size - 1] != '/') {
     add_bar_char = 1;
     filename_path_size++;
-    DEBUG_PRINT("[handle_msg_send] Added bar char, total size now: %lu\n", filename_path_size);
+    DEBUG_PRINT("[handle_msg_send] Added bar char, total size now: %lu\n",
+                filename_path_size);
   }
 
   // Create buffer large enough to hold the filename and the path, +1 for the
   // null terminator \0
-  char path[filename_path_size + 1];
+  char *path = calloc(filename_path_size + 1, 1);
   if (add_bar_char) {
-    snprintf(path, sizeof(path), "%s/%s", save_path, header.filename);
+    snprintf(path, filename_path_size + 1, "%s/%s", save_path, header.filename);
   } else {
-    snprintf(path, sizeof(path), "%s%s", save_path, header.filename);
+    snprintf(path, filename_path_size, "%s%s", save_path, header.filename);
   }
   DEBUG_PRINT("[handle_msg_send] Final save path: %s\n", path);
-
+  *total_path = path;
   new_file = fopen(path, "wb");
   if (!new_file) {
     fprintf(stderr, "Unable to create new file at: %s\n", path);
@@ -103,33 +110,44 @@ int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
   return 0;
 }
 
-int write_new_file(Header header, sock_fd connection_fd, FILE *file) {
+uLong calculate_crc(void *buf, size_t buf_len, uLong crc) {
+  crc = crc32(crc, (const Bytef *)buf, buf_len);
+  return crc;
+}
+
+int write_new_file(Header header, sock_fd connection_fd, FILE *file,
+                   char *total_path) {
   DEBUG_PRINT("[write_new_file] Called\n");
   Header ack_header = create_ack_header(header.filename);
   Header now_header = {0};
   int resend_tries = 0;
   size_t chunks = 0;
+  uLong crc = crc32(0L, Z_NULL, 0);
   do {
     chunks++;
     // Read next header
-    DEBUG_PRINT("[write_new_file] Reading header %lu (calls read_and_parse_header)\n", chunks);
+    DEBUG_PRINT(
+        "[write_new_file] Reading header %lu (calls read_and_parse_header)\n",
+        chunks);
     read_and_parse_header(connection_fd, &now_header);
 
     switch (now_header.type) {
     case MSG_DATA:
       break;
     case MSG_DONE:
+      check_sucessfull_file_recv(crc, now_header.checksum, total_path);
       return 0;
       break;
     case MSG_ERROR:
       return 1;
     }
 
-    //Calculate, check and read chunk
+    // Calculate, check and read chunk
     uint16_t bytes_to_be_handled = now_header.payload_size;
-    if (bytes_to_be_handled > CHUNK_SIZE)
-    {
-      DEBUG_PRINT("[write_new_file] Error: bytes recevied (%u) are bigger than max chunk size (%u)\n", bytes_to_be_handled, CHUNK_SIZE);
+    if (bytes_to_be_handled > CHUNK_SIZE) {
+      DEBUG_PRINT("[write_new_file] Error: bytes recevied (%u) are bigger than "
+                  "max chunk size (%u)\n",
+                  bytes_to_be_handled, CHUNK_SIZE);
       return 1;
     }
     // Since the header has been read, now we read data
@@ -137,24 +155,23 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file) {
     uint16_t bytes_read = read(connection_fd, buffer, bytes_to_be_handled);
     DEBUG_PRINT("[write_new_file] Read chunk %lu successfully\n", chunks);
 
-
     // CRC32 calculation and verify
-    uLong crc = crc32(0L, Z_NULL, 0);
     crc = crc32(crc, (const Bytef *)buffer, bytes_read);
     if (crc != now_header.checksum) {
-      DEBUG_PRINT("[write_new_file] Error: CRC mismatch at chunk %lu: Expected: %lu | Got: %u\nTries left: %d\n",chunks, crc, now_header.checksum, resend_tries);
-      if (resend_tries > MAX_RESEND_TRIES)
-      {
+      DEBUG_PRINT("[write_new_file] Error: CRC mismatch at chunk %lu: "
+                  "Expected: %lu | Got: %u\nTries left: %d\n",
+                  chunks, crc, now_header.checksum, resend_tries);
+      if (resend_tries > MAX_RESEND_TRIES) {
         DEBUG_PRINT("[write_new_file] Error: Max chunk retries\n");
         return 1;
       }
-        resend_tries++;
+      resend_tries++;
       send_error_header(connection_fd);
       DEBUG_PRINT("[write_new_file] Trying to recieve chunk again\n");
       continue;
     }
-    DEBUG_PRINT("[write_new_file] CRC match successfully E: %lu | G: %u\n", crc, now_header.checksum);
-
+    DEBUG_PRINT("[write_new_file] CRC match successfully E: %lu | G: %u\n", crc,
+                now_header.checksum);
 
     // Writes to the file
 
@@ -168,15 +185,30 @@ int write_new_file(Header header, sock_fd connection_fd, FILE *file) {
     write(connection_fd, &ack_header, sizeof(Header));
     DEBUG_PRINT("[write_new_file] Send ack to client\n");
     memset(&now_header, 0, sizeof(Header));
-    
+
     DEBUG_PRINT("=============================\n");
   } while (1);
   DEBUG_PRINT("[write_new_file] File wrote\n");
 }
 
 void send_error_header(sock_fd connection_fd) {
-  DEBUG_PRINT("[send_error_header] Called!\n"); 
+  DEBUG_PRINT("[send_error_header] Called!\n");
   Header error_header = create_error_header();
   uint16_t bytes_sent = write(connection_fd, &error_header, sizeof(Header));
   DEBUG_PRINT("[send_error_header] Header sent\n");
+}
+
+void check_sucessfull_file_recv(uLong crc_server, uLong crc_client,
+                                char *total_path) {
+  DEBUG_PRINT("[check_sucessfull_file_recv] Checking hole file CRC\n");
+  if (crc_server != crc_client) {
+    DEBUG_PRINT("[check_sucessfull_file_recv] CRC mismatch! E: %lu | G: %lu , "
+                "removing file\n",
+                crc_server, crc_client);
+    remove(total_path);
+    return;
+  }
+  DEBUG_PRINT("[check_sucessfull_file_recv] CRC match E: %lu | G: %lu , "
+              "everything ok\n",
+              crc_server, crc_client);
 }

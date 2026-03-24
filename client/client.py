@@ -8,6 +8,7 @@ import argparse
 
 # =BHI255s
 
+
 class msg_type(IntEnum):
     MSG_SEND = 1
     MSG_ACK = 2
@@ -20,6 +21,7 @@ class msg_type(IntEnum):
 FMT = "=BHI255s"
 HEADER_SIZE = struct.calcsize(FMT)
 
+
 @dataclass
 class Header:
     type: int
@@ -30,23 +32,30 @@ class Header:
     @classmethod
     def from_bytes(cls, data: bytes):
         type_, payload_size, checksum, filename = struct.unpack(FMT, data)
-        return cls(type_, payload_size, checksum, filename.rstrip(b'\x00').decode())
+        return cls(type_, payload_size, checksum, filename.rstrip(b"\x00").decode())
+
 
 # ERROR CLASSES
+
+
 class CRCMismatchError(Exception):
     pass
+
 
 class ConnectionError(OSError):
     pass
 
+
 # MAIN CLASS
+
+
 class SimpleFTP:
     def __init__(self, chunk_size=8192, send_retries=3):
 
         # public properties
         self.chunk_size = chunk_size
         self.send_retries = send_retries
-
+        self.checksum = 0
         # private properties
         self.__socket = socket.socket()
 
@@ -61,16 +70,14 @@ class SimpleFTP:
     def send_file(self, filepath):
         p = Path(filepath)
         print(f"Sending file {p.name}")
-        
+
         send_header = self._create_send_header(p.name)
         self.__socket.send(send_header)
 
         for chunk in self._chunkinize_file(filepath):
-
-            chunk_checksum = self._calculate_chunk_checksum(chunk)
-            data_packet = self._create_data_packet(chunk, chunk_checksum)
+            self.checksum = self._calculate_chunk_checksum(chunk)
+            data_packet = self._create_data_packet(chunk, self.checksum)
             self.__socket.send(data_packet)
-
 
             header = self._recv_response()
 
@@ -86,8 +93,7 @@ class SimpleFTP:
         print("File sent!")
 
     def _create_send_header(self, filename):
-        header = struct.pack("=BHI255s", msg_type.MSG_SEND,
-                             0, 0, filename.encode())
+        header = struct.pack("=BHI255s", msg_type.MSG_SEND, 0, 0, filename.encode())
         return header
 
     def _create_data_packet(self, chunk, checksum):
@@ -96,12 +102,12 @@ class SimpleFTP:
         return packet
 
     def _create_done_header(self):
-        header = struct.pack("=BHI255s", msg_type.MSG_DONE, 0, 0, b"")
+        header = struct.pack("=BHI255s", msg_type.MSG_DONE, 0, self.checksum, b"")
         return header
 
     def _calculate_chunk_checksum(self, chunk):
-        checksum = zlib.crc32(chunk) & 0xFFFFFFFF
-        return checksum
+        self.checksum = zlib.crc32(chunk, self.checksum) & 0xFFFFFFFF
+        return self.checksum
 
     def _chunkinize_file(self, filepath):
         p = Path(filepath)
@@ -133,8 +139,9 @@ class SimpleFTP:
                 return
         raise CRCMismatchError()
 
+
 def main():
-    
+
     parser = argparse.ArgumentParser(description="SimpleFTP Client")
     parser.add_argument("filepath", help="File to be sent")
     parser.add_argument("--ip", default="localhost", help="Server's IP")
@@ -147,6 +154,6 @@ def main():
     ftp.send_file(args.filepath)
     ftp.disconnect()
 
+
 if __name__ == "__main__":
     main()
-
