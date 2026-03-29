@@ -7,17 +7,18 @@ A lightweight file transfer tool built on a custom binary protocol over TCP, imp
 ```
 SimpleFTP/
 ├── server/
-│   ├── server.c        # Main server logic and entry point
+│   ├── server.c        # Main server loop, CLI argument parsing, entry point
 │   └── server.h        # Args struct definition
 ├── protocol/
-│   ├── protocol.c      # Protocol handling — headers, file writing, CRC32
-│   └── protocol.h      # Protocol constants, Header struct, function declarations
+│   ├── protocol.c      # Protocol handling — headers, file writing, CRC32 validation
+│   └── protocol.h      # Protocol constants, message types, function declarations
 ├── net/
-│   ├── net.c           # TCP socket creation and connection handling
-│   └── net.h           # sock_fd typedef, New_connection_info struct
+│   ├── net.c           # TCP socket creation and connection acceptance
+│   └── net.h           # sock_fd typedef, function declarations
 ├── helpers/
-│   ├── helpers.c       # IP conversion utilities
-│   └── helpers.h       # DEBUG_PRINT macro, ip_octetes struct
+│   ├── helpers.c       # Path handling, CRC32 helpers, header creation/sending, data reading
+│   └── helpers.h       # DEBUG_PRINT macro, function declarations
+├── types.h             # Shared types: Header, Args, ConnectionContext, ip_octetes
 └── client.py           # Python client (SimpleFTP class + CLI)
 ```
 
@@ -91,17 +92,17 @@ sudo apt install zlib1g-dev
 ## Features
 
 - Custom binary protocol over TCP
-- CRC32 integrity verification per chunk
+- CRC32 integrity verification per chunk (cumulative)
+- End-to-end integrity check: full-file CRC32 sent in `MSG_DONE`, server deletes file on mismatch
 - Automatic chunk retransmission on CRC mismatch (up to 3 retries)
 - Configurable chunk size (default 8KB)
 - Debug mode with detailed per-chunk logging
 - Supports files of any size
+- Filename sanitization on the server (strips path separators and hidden file indicators)
 
 ## Known Limitations
 
-These are known limitations of the current v1 implementation:
-
-**No end-to-end integrity check** — CRC32 is verified per chunk, but there is no checksum of the complete file in `MSG_DONE`. If the connection drops mid-transfer, the incomplete file remains on disk with no indication it is corrupted. A future version should include a full-file checksum in `MSG_DONE` and have the server delete partial files on failure.
+These are known limitations of the current implementation:
 
 **Silent file overwrite** — if the server receives a file with the same name as an existing one, it overwrites it silently. A future version could append a timestamp to the filename or prompt before overwriting.
 
