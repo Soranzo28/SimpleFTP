@@ -7,10 +7,10 @@
   - Servidor: ip, porta, caminho de destino
   - Cliente: ip, porta (opcional) caminho pro arquivo
 - [x] DEBUG MODE server-side principalmente pra printar CRC calculado / recebido, pacotes e etc
-- [ ] Tratar erro de conexão no meio da transferencia
+- [x] Tratar erro de conexão no meio da transferencia
 - [ ] Multithread
 - [ ] Tratar arquivos de mesmo nome excluem o anterior
-- [ ] Checksum do arquivo inteiro no MSG_DONE
+- [x] Checksum do arquivo inteiro no MSG_DONE
 
 ## Qualidade de código
 - [x] Refatorar write_new_file (recursão → loop)

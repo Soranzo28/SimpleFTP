@@ -1,16 +1,9 @@
 #ifndef NET_C
 #define NET_C
 
-#include <netinet/in.h>
-
-typedef int sock_fd;
-
-typedef struct 
-{
-  sock_fd fd;
-  struct sockaddr_in addr;
-} New_connection_info;
+#include <netinet/in.h> 
+#include "../types.h"
 
 sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr);
-New_connection_info get_new_connection(sock_fd server_fd);
+ConnectionContext get_new_connection(sock_fd server_fd);
 #endif

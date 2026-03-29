@@ -1,10 +1,5 @@
 #include "net.h"
-#include <asm-generic/socket.h>
 #include "../helpers/helpers.h"
-#include <iso646.h>
-#include <stdio.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
 
 extern Args args;
 
@@ -41,23 +36,30 @@ sock_fd get_tcp_sock_fd(unsigned int port, char* ip, int reuse_addr) {
   return sock;
 }
 
-New_connection_info get_new_connection(sock_fd server_fd) {
+ConnectionContext get_new_connection(sock_fd server_fd) {
   DEBUG_PRINT("[get_new_connection] called with server_fd %d\n", server_fd);
+
   struct sockaddr_in new_connection_addr;
-  New_connection_info new_connection_info = {0};
+  ConnectionContext connectionContext = {0};
 
   socklen_t new_connection_len = sizeof(new_connection_addr);
-  sock_fd new_connection = accept(
-      server_fd, (struct sockaddr *)&new_connection_addr, &new_connection_len);
-  if (new_connection == -1) {
-    perror("accept");
-    new_connection_info.fd = -1;
-    return new_connection_info;
-  }
+  sock_fd new_connection = accept( server_fd, (struct sockaddr *)&new_connection_addr, &new_connection_len);
 
-  new_connection_info.fd = new_connection;
-  new_connection_info.addr = new_connection_addr;
+  if (new_connection == -1) 
+  {
+    perror("accept");
+    connectionContext.fd = -1;
+    return connectionContext; 
+  }
+ 
+  //Tries to convert ip to strign and assign to connectionContext, if fail, puts \0 there.
+  if(ip_to_string(new_connection_addr.sin_addr.s_addr, connectionContext.addr, sizeof(connectionContext.addr)))
+  {
+    DEBUG_PRINT("[get_new_connection] Warning: Unable to format IP to string\n");
+    connectionContext.addr[0] = '\0';
+  }
+  connectionContext.fd = new_connection;
   
   DEBUG_PRINT("[get_new_connection] returned successfully with: new_fd %d\n", new_connection);
-  return new_connection_info;
+  return connectionContext;
 }

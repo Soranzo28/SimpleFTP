@@ -1,214 +1,139 @@
-#include "protocol.h"
+#include "../types.h"
 #include "../helpers/helpers.h"
+#include "../protocol/protocol.h"
 #include <iso646.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <errno.h>
 #include <unistd.h>
 
 extern Args args;
 
-void read_and_parse_header(int sockfd, Header *header) {
+void read_and_parse_header(ConnectionContext* connectionContext) {
   DEBUG_PRINT("[read_and_parse_header] Called\n");
-  Header temp_buffer;
-  size_t bytes_read = read(sockfd, &temp_buffer, sizeof(Header));
+  Header temp_buffer = {0};
+  ssize_t bytes_read = 0, total_bytes_read = 0;
+
+  while (total_bytes_read < (ssize_t)sizeof(Header))
+  {
+    bytes_read = read(connectionContext->fd, (char*)&temp_buffer+total_bytes_read, sizeof(Header)-total_bytes_read);
+    if (bytes_read <= 0)
+    {
+      temp_buffer.type = MSG_ERROR; 
+      DEBUG_PRINT("[read_and_parse_header] Error: %s (ret: %ld)\n", strerror(errno), bytes_read);
+      return;
+    }
+    total_bytes_read += bytes_read;
+  }
+  DEBUG_PRINT("[read_and_parse_header] Total bytes read: %lu / %ld\n", total_bytes_read, sizeof(Header));
+
   DEBUG_PRINT(
       "[read_and_parse_header] Header recivied:\n[Header] Type: %u\n[Header] "
       "Payload Size: %u\n[Header] Checksum: %u\n[Header] Filename: %s\n",
       temp_buffer.type, temp_buffer.payload_size, temp_buffer.checksum,
       temp_buffer.filename);
-  if (bytes_read == sizeof(Header)) {
-    memcpy(header, &temp_buffer, sizeof(Header));
-    return;
-  }
 
-  memset(header, 0, sizeof(Header));
-  header->type = MSG_ERROR;
-  DEBUG_PRINT("[read_and_parse_header] Error on recevied header\n");
+  connectionContext->actual_header = temp_buffer;
+
   return;
 }
 
-#define X(type, string)                                                        \
-  case type: {                                                                 \
-    printf("Type: %s\n", string);                                              \
-  } break;
-
-void print_header(Header header) {
-  DEBUG_PRINT("[print_header] Called\n");
-  switch (header.type) { MSG_TYPE }
-  printf("Payload: %u\n", header.payload_size);
-  printf("Checksum: %u\n", header.checksum);
-  printf("File name: %s\n", header.filename);
-}
-#undef X
-
-Header create_ack_header(char *filename) {
-  DEBUG_PRINT("[create_ack_header] Called\n");
-  Header header = {
-      .type = MSG_ACK,
-      .payload_size = 0,
-      .checksum = 0,
-  };
-  strncpy(header.filename, filename, sizeof(header.filename) - 1);
-  DEBUG_PRINT("[create_ack_header] Ack header created\n");
-  return header;
-}
-
-Header create_error_header() {
-  DEBUG_PRINT("[create_error_header] Called\n");
-  Header header;
-
-  memset(&header, 0, sizeof(Header));
-  header.type = MSG_ERROR;
-  DEBUG_PRINT("[create_error_header] Error header created\n");
-  return header;
-}
-
-int handle_msg_send(Header header, sock_fd connection_fd, FILE **file,
-                    const char *save_path, char **total_path) {
+int handle_msg_send(ConnectionContext* cx, char* save_path)
+{
   DEBUG_PRINT("[handle_msg_send] Called!\n");
-  FILE *new_file;
 
-  uint8_t add_bar_char = 0;
-  size_t save_path_size = strlen(save_path);
-  size_t filename_size = strlen(header.filename);
-  size_t filename_path_size = save_path_size + filename_size;
-  DEBUG_PRINT("[handle_msg_send] Save path size: %lu\nFilename size: "
-              "%lu\nTotal size: %lu\n",
-              save_path_size, filename_size, filename_path_size);
-  // The function accepts path with / or without, here we check and add 1 to the
-  // size if to hold the new '/' if needed
-  if (save_path[save_path_size - 1] != '/') {
-    add_bar_char = 1;
-    filename_path_size++;
-    DEBUG_PRINT("[handle_msg_send] Added bar char, total size now: %lu\n",
-                filename_path_size);
-  }
+  char *path = get_path(cx, save_path);
+  if (!path) return 1;
 
-  // Create buffer large enough to hold the filename and the path, +1 for the
-  // null terminator \0
-  char *path = calloc(filename_path_size + 1, 1);
-  if (add_bar_char) {
-    snprintf(path, filename_path_size + 1, "%s/%s", save_path, header.filename);
-  } else {
-    snprintf(path, filename_path_size, "%s%s", save_path, header.filename);
-  }
-  DEBUG_PRINT("[handle_msg_send] Final save path: %s\n", path);
-  *total_path = path;
-  new_file = fopen(path, "wb");
-  if (!new_file) {
-    fprintf(stderr, "Unable to create new file at: %s\n", path);
-    return 1;
-  }
+  FILE* file = get_file_pointer(path);  
+  if (!file) return 1;
+  cx->file = file; 
   DEBUG_PRINT("[handle_msg_send] File at %s opened\n", path);
-  Header ack_header = create_ack_header(header.filename);
-  write(connection_fd, &ack_header, sizeof(Header));
-  DEBUG_PRINT("[handle_msg_send] Ack header sent\n");
-  *file = new_file;
+  send_ack_header(cx->fd, cx->actual_header.filename);
+
   DEBUG_PRINT("[handle_msg_send] Returned successfully\n");
   return 0;
 }
 
-uLong calculate_crc(void *buf, size_t buf_len, uLong crc) {
-  crc = crc32(crc, (const Bytef *)buf, buf_len);
-  return crc;
-}
-
-int write_new_file(Header header, sock_fd connection_fd, FILE *file,
-                   char *total_path) {
+int write_new_file(ConnectionContext* cx)
+{
   DEBUG_PRINT("[write_new_file] Called\n");
-  Header ack_header = create_ack_header(header.filename);
-  Header now_header = {0};
   int resend_tries = 0;
-  size_t chunks = 0;
-  uLong crc = crc32(0L, Z_NULL, 0);
+  cx->crc = crc32(0L, Z_NULL, 0);
+  uint8_t* buffer = calloc(CHUNK_SIZE, 1);
   do {
-    chunks++;
     // Read next header
-    DEBUG_PRINT(
-        "[write_new_file] Reading header %lu (calls read_and_parse_header)\n",
-        chunks);
-    read_and_parse_header(connection_fd, &now_header);
+    DEBUG_PRINT( "[write_new_file] Reading header %lu (calls read_and_parse_header)\n", cx->chunk_count);
+    read_and_parse_header(cx);
 
-    switch (now_header.type) {
-    case MSG_DATA:
-      break;
-    case MSG_DONE:
-      check_sucessfull_file_recv(crc, now_header.checksum, total_path);
-      return 0;
-      break;
-    case MSG_ERROR:
-      return 1;
+    switch (cx->actual_header.type)
+    {
+      case MSG_DATA:
+        break;
+      case MSG_DONE:
+        free(buffer);
+        return 0;
+        break;
+      case MSG_ERROR:
+        free(buffer);
+        return 1;
     }
 
-    // Calculate, check and read chunk
-    uint16_t bytes_to_be_handled = now_header.payload_size;
-    if (bytes_to_be_handled > CHUNK_SIZE) {
-      DEBUG_PRINT("[write_new_file] Error: bytes recevied (%u) are bigger than "
-                  "max chunk size (%u)\n",
-                  bytes_to_be_handled, CHUNK_SIZE);
-      return 1;
-    }
-    // Since the header has been read, now we read data
-    uint8_t buffer[CHUNK_SIZE] = {0};
-    uint16_t bytes_read = read(connection_fd, buffer, bytes_to_be_handled);
-    DEBUG_PRINT("[write_new_file] Read chunk %lu successfully\n", chunks);
+    // read_data function returns 1 in case of error or connection closed 
+    if (read_data(cx, buffer)) {free(buffer); return 1;}
 
-    // CRC32 calculation and verify
-    crc = crc32(crc, (const Bytef *)buffer, bytes_read);
-    if (crc != now_header.checksum) {
-      DEBUG_PRINT("[write_new_file] Error: CRC mismatch at chunk %lu: "
-                  "Expected: %lu | Got: %u\nTries left: %d\n",
-                  chunks, crc, now_header.checksum, resend_tries);
-      if (resend_tries > MAX_RESEND_TRIES) {
+    uLong old_crc = cx->crc;
+    // calculate crc from buffer and stores at field CRC on struct 
+    calculate_crc(cx, buffer, cx->actual_header.payload_size);
+
+    // only takes one arg because we compare the calculated crc with the header, which is already on the struct
+    if (compare_crc(cx))
+    {
+      if (resend_tries > MAX_RESEND_TRIES) 
+      {
         DEBUG_PRINT("[write_new_file] Error: Max chunk retries\n");
+        cx->crc = old_crc;
+        free(buffer);
         return 1;
       }
       resend_tries++;
-      send_error_header(connection_fd);
+      send_error_header(cx->fd);
       DEBUG_PRINT("[write_new_file] Trying to recieve chunk again\n");
       continue;
     }
-    DEBUG_PRINT("[write_new_file] CRC match successfully E: %lu | G: %u\n", crc,
-                now_header.checksum);
+
+  
+    DEBUG_PRINT("[write_new_file] CRC match successfully E: %lu | G: %u\n", cx->crc, cx->actual_header.checksum);
 
     // Writes to the file
 
-    DEBUG_PRINT("[write_new_file] Writing chunk %lu to file\n", chunks);
-    uint16_t bytes_written =
-        fwrite(buffer, sizeof(buffer[0]), bytes_read, file);
+    DEBUG_PRINT("[write_new_file] Writing chunk %lu to file\n", cx->chunk_count);
+    fwrite(buffer, sizeof(buffer[0]), cx->actual_header.payload_size, cx->file);
     resend_tries = 0;
-    DEBUG_PRINT("[write_new_file] Chunk %lu wrote\n", chunks);
+    DEBUG_PRINT("[write_new_file] Chunk %lu wrote\n", cx->chunk_count);
 
     // Sends ack
-    write(connection_fd, &ack_header, sizeof(Header));
+    send_ack_header(cx->fd, cx->actual_header.filename);
     DEBUG_PRINT("[write_new_file] Send ack to client\n");
-    memset(&now_header, 0, sizeof(Header));
+    memset(&cx->actual_header, 0, sizeof(Header));
 
     DEBUG_PRINT("=============================\n");
   } while (1);
+  free(buffer);
   DEBUG_PRINT("[write_new_file] File wrote\n");
 }
 
-void send_error_header(sock_fd connection_fd) {
-  DEBUG_PRINT("[send_error_header] Called!\n");
-  Header error_header = create_error_header();
-  uint16_t bytes_sent = write(connection_fd, &error_header, sizeof(Header));
-  DEBUG_PRINT("[send_error_header] Header sent\n");
-}
-
-void check_sucessfull_file_recv(uLong crc_server, uLong crc_client,
-                                char *total_path) {
+void check_sucessfull_file_recv(ConnectionContext* cx) {
   DEBUG_PRINT("[check_sucessfull_file_recv] Checking hole file CRC\n");
-  if (crc_server != crc_client) {
-    DEBUG_PRINT("[check_sucessfull_file_recv] CRC mismatch! E: %lu | G: %lu , "
-                "removing file\n",
-                crc_server, crc_client);
-    remove(total_path);
+  if (cx->crc != cx->actual_header.checksum) {
+    DEBUG_PRINT("[check_sucessfull_file_recv] CRC mismatch! E: %lu | G: %u , removing file\n", cx->crc, cx->actual_header.checksum);
+    remove(cx->path);
     return;
   }
-  DEBUG_PRINT("[check_sucessfull_file_recv] CRC match E: %lu | G: %lu , "
-              "everything ok\n",
-              crc_server, crc_client);
+  DEBUG_PRINT("[check_sucessfull_file_recv] CRC match E: %lu | G: %u , everything ok\n",
+              cx->crc, cx->actual_header.checksum);
 }
+
